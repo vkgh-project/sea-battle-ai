@@ -28,12 +28,14 @@ npm.cmd start
 
 1. Завантажте код у свій GitHub-репозиторій разом із `package-lock.json`, без `.env` і `node_modules`.
 2. Створіть Render Web Service з цього репозиторію або Blueprint із `render.yaml`.
-3. Build command: `npm ci && npm run build`. Start command: `npm start`. Health check: `/api/health`.
+3. Build command: `npm ci --include=dev && npm run build`. Start command: `npm start`. Health check: `/api/health`.
 4. Додайте секрет `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-4o-mini`, `AI_MODE=openai`, `NODE_ENV=production`.
 5. Встановіть `APP_ORIGIN` у точну адресу сервісу, наприклад `https://sea-battle-ai.onrender.com`. Для власного домену використовуйте його адресу. Без кінцевого `/`.
 6. Залиште один екземпляр сервера. Диск підключати не потрібно. Blueprint обирає платний план `0.5c-512mb`; тариф можна змінити у Render. На Free засинання сервера призводить до втрати партій.
 
 API-ключ доступний лише серверу. Браузер користувача не потребує акаунта OpenAI.
+
+Збірка потребує `devDependencies` (TypeScript, Vite та типів), навіть коли `NODE_ENV=production`. Файл `.npmrc` також вмикає їх встановлення, щоб раніше створені сервіси з командою `npm ci && npm run build` продовжували працювати. Якщо виникає `TS2688` для `node` або `vite/client`, перевірте Build Command у Render → Settings → Build & Deploy і повторіть розгортання останнього коміту.
 
 ## Правила та інтерфейс
 
