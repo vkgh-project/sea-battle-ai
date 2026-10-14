@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { randomFleet, same, type GameView } from '../shared/game.js';
 import { buildApp } from '../server/app.js';
-import type { ChooseShot } from '../server/ai.js';
+import { createChooser, type ChooseShot } from '../server/ai.js';
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 async function fixture(choose: ChooseShot = async state => state.availableTargets[0], extra: Parameters<typeof buildApp>[0] extends infer T ? Partial<T> : never = {}) {
-  const app = await buildApp({ choose, mode: 'openai', ...extra });
+  const app = await buildApp({ choose, mode: 'gemini', ...extra });
   apps.push(app);
   const session = await app.inject({ method: 'GET', url: '/api/session' });
   const token = session.cookies[0].value;
@@ -27,6 +27,29 @@ async function makeAiTurn(f: Awaited<ReturnType<typeof fixture>>) {
   throw new Error('Expected at least one miss');
 }
 describe('sessions and HTTP API', () => {
+  it('executes an automatic Gemini turn and has no response-pasting endpoint', async () => {
+    let fleet: GameView['playerShips'] = [];
+    let calls = 0;
+    const transport: typeof fetch = async (_url, init) => {
+      calls++;
+      const knowledge = JSON.parse(JSON.parse(init!.body as string).contents[0].parts[0].text);
+      const miss = knowledge.availableTargets.find((p: { row: number; column: number }) => !fleet.flat().some(q => same(p, q)));
+      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(miss) }] } }] }));
+    };
+    const f = await fixture(createChooser('gemini', 'gemini-3.5-flash-lite', 'test-key', transport));
+    fleet = f.game.playerShips;
+    expect((await f.app.inject({ method: 'GET', url: '/api/session', headers: f.headers })).json().aiMode).toBe('gemini');
+    await makeAiTurn(f);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const game = (await f.app.inject({ method: 'GET', url: `/api/game/${f.game.id}`, headers: f.headers })).json<GameView>();
+    expect(calls).toBe(1);
+    expect(game.turn).toBe('human');
+    expect(game.aiShots).toHaveLength(1);
+    expect(game.error).toBeNull();
+    expect(game).not.toHaveProperty('manualPrompt');
+    const removed = await f.app.inject({ method: 'POST', url: `/api/game/${f.game.id}/ai-response`, headers: f.headers, payload: { response: '{}', version: game.version } });
+    expect(removed.statusCode).toBe(404);
+  });
   it('isolates users and refuses access with only a game ID', async () => {
     const a = await fixture();
     const other = await a.app.inject({ method: 'GET', url: '/api/session' });

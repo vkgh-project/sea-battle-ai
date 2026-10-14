@@ -4,7 +4,7 @@ export const LETTERS = 'АБВГҐДЕЄЖЗ';
 export type Point = { row: number; column: number };
 export type Ship = Point[];
 export type Shot = Point & { result: 'miss' | 'hit' | 'sunk' };
-export type AiMode = 'manual' | 'openai' | 'demo';
+export type AiMode = 'gemini' | 'demo';
 export type GameView = {
   id: string;
   version: number;
@@ -17,7 +17,6 @@ export type GameView = {
   aiShots: Shot[];
   enemySunkShips: Ship[];
   enemyShips?: Ship[];
-  manualPrompt?: string;
 };
 export type SessionView = { game: GameView | null; aiMode: AiMode };
 export const key = (p: Point) => p.row * SIZE + p.column;

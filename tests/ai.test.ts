@@ -36,8 +36,8 @@ describe('AI scheduler', () => {
     expect(game.busy).toBe(false);
     expect(game.error).toBeTruthy();
   });
-  it('requires a key for OpenAI and provides demo only when explicitly chosen', async () => {
-    expect(() => createChooser('openai', 'gpt-4o-mini')).toThrow('OPENAI_API_KEY');
+  it('requires a key for Gemini and provides demo only when explicitly chosen', async () => {
+    expect(() => createChooser('gemini', 'gemini-3.5-flash-lite')).toThrow('GEMINI_API_KEY');
     const game = createGame(randomFleet(), randomFleet());
     const state = knowledge(game);
     const point = await createChooser('demo', 'unused')(state);

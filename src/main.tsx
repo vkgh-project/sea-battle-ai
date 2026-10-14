@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { FLEET, LETTERS, SIZE, canPlace, key, label, randomFleet, same, touches, type GameView, type Point, type SessionView, type Ship, type Shot } from '../shared/game';
+import { FLEET, LETTERS, SIZE, canPlace, key, label, randomFleet, same, touches, type AiMode, type GameView, type Point, type SessionView, type Ship, type Shot } from '../shared/game';
 import './style.css';
 
 class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -55,14 +55,11 @@ function App() {
   const [fleet, setFleet] = useState<Ship[]>(() => randomFleet());
   const [setup, setSetup] = useState(false);
   const [ready, setReady] = useState(false);
-  const [mode, setMode] = useState('manual');
+  const [mode, setMode] = useState<AiMode>('gemini');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [horizontal, setHorizontal] = useState(true);
   const [hover, setHover] = useState<Point | null>(null);
-  const [answer, setAnswer] = useState('');
-  const [copyStatus, setCopyStatus] = useState('');
-  const promptField = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(true);
   const requestLock = useRef(false);
   const generation = useRef(0);
@@ -74,18 +71,6 @@ function App() {
     }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Сервер недоступний.'); });
     return () => { cancelled = true; mounted.current = false; };
   }, []);
-  useEffect(() => { setAnswer(''); setCopyStatus(''); }, [game?.id, game?.version]);
-  async function copyPrompt() {
-    if (!game?.manualPrompt) return;
-    try {
-      await navigator.clipboard.writeText(game.manualPrompt);
-      setCopyStatus('Промпт скопійовано. Вставте його у ChatGPT.');
-    } catch {
-      promptField.current?.focus();
-      promptField.current?.select();
-      setCopyStatus('Текст виділено. Скопіюйте його вручну.');
-    }
-  }
   useEffect(() => {
     if (!game || setup || game.phase !== 'playing') return;
     let cancelled = false;
@@ -132,36 +117,17 @@ function App() {
     ? fleet.length === 10 ? 'Флот готовий. Починаймо?' : `Розмістіть корабель на ${nextLength} клітинки`
     : game?.phase === 'won' ? 'Ви перемогли! Увесь флот суперника потоплено.'
     : game?.phase === 'lost' ? 'AI переміг. Спробуємо ще раз?'
-    : game?.turn === 'ai' ? mode === 'manual' ? 'Хід ChatGPT. Скопіюйте промпт і вставте відповідь.' : game.busy ? 'AI обирає наступний постріл…' : 'Хід AI очікує повтору.'
+    : game?.turn === 'ai' ? game.busy ? 'AI обирає наступний постріл…' : 'Хід AI очікує повтору.'
     : 'Ваш хід. Оберіть клітинку на полі суперника.';
   return <main>
-    <header><div className="eyebrow">ЛЮДИНА × {mode === 'demo' ? 'ДЕМО-БОТ' : 'CHATGPT'}</div><h1>Морський бій<span>.</span></h1>
+    <header><div className="eyebrow">ЛЮДИНА × {mode === 'demo' ? 'ДЕМО-БОТ' : 'GOOGLE GEMINI'}</div><h1>Морський бій<span>.</span></h1>
       <p className="intro">Десять кораблів. Сто клітинок. Один переможець.</p></header>
     <div className="status" role="status" aria-live="polite"><span className={`status-dot ${game?.busy ? 'pulse' : ''}`} />{status}</div>
     {mode === 'demo' && <p className="demo">Демонстраційний режим: ходи обирає локальний алгоритм.</p>}
     {error && <div className="error" role="alert">{error}{!ready && <button onClick={() => location.reload()}>Підключитися знову</button>}</div>}
     {!setup && game?.error && <div className="error" role="alert">{game.error}</div>}
-    {!setup && game?.manualPrompt && mode === 'manual' && <section className="manual-panel" aria-labelledby="manual-title">
-      <h2 id="manual-title">Передайте хід ChatGPT</h2>
-      <p>Скопіюйте промпт у чат ChatGPT. Потім вставте його JSON-відповідь нижче.</p>
-      <label htmlFor="ai-prompt">Промпт для поточного ходу</label>
-      <textarea id="ai-prompt" ref={promptField} value={game.manualPrompt} readOnly spellCheck={false} rows={6} />
-      <div className="prompt-actions"><button type="button" onClick={() => void copyPrompt()}>Скопіювати промпт</button>
-        <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">Відкрити ChatGPT ↗</a></div>
-      <p className="copy-status" role="status" aria-live="polite">{copyStatus}</p>
-      <form onSubmit={event => {
-        event.preventDefault();
-        void mutate(() => api<GameView>(`/game/${game.id}/ai-response`, { response: answer, version: game.version }));
-      }}>
-        <label htmlFor="ai-answer">Відповідь ChatGPT</label>
-        <textarea id="ai-answer" value={answer} onChange={event => setAnswer(event.target.value)}
-          placeholder={'Вставте весь JSON із requestId, row та column'} spellCheck={false} rows={3} maxLength={8000} disabled={loading || !ready} />
-        <button type="submit" className="primary" disabled={!answer.trim() || loading || !ready}>{loading ? 'Перевіряємо…' : 'Виконати постріл ChatGPT'}</button>
-      </form>
-      <p className="hint">Після влучання з’явиться новий промпт. Після промаху хід перейде вам. Для кожного пострілу використовуйте актуальний промпт.</p>
-    </section>}
-    {!setup && mode === 'manual' && game?.aiShots.length ? <p className="last-shot" role="status">
-      Останній постріл ChatGPT: {label(game.aiShots[game.aiShots.length - 1])} — {{ miss: 'мимо', hit: 'влучання', sunk: 'потоплено' }[game.aiShots[game.aiShots.length - 1].result]}.
+    {!setup && game?.aiShots.length ? <p className="last-shot" role="status">
+      Останній постріл {mode === 'demo' ? 'бота' : 'Gemini'}: {label(game.aiShots[game.aiShots.length - 1])} — {{ miss: 'мимо', hit: 'влучання', sunk: 'потоплено' }[game.aiShots[game.aiShots.length - 1].result]}.
     </p> : null}
     <div className="boards">
       <Board title="Ваш флот" ships={setup ? fleet : game?.playerShips ?? []} shots={setup ? [] : game?.aiShots}
@@ -187,7 +153,7 @@ function App() {
         <button disabled={loading} onClick={() => { setFleet([]); setError(''); setHover(null); }}>Розставити вручну</button>
         {fleet.length < 10 && <button onClick={() => setHorizontal(!horizontal)}>{horizontal ? '↔ Горизонтально' : '↕ Вертикально'}</button>}
       </> : <>
-        {mode !== 'manual' && game?.turn === 'ai' && !game.busy && !finished && <button className="primary" disabled={loading || !ready} onClick={() => void mutate(() => api<GameView>(`/game/${game.id}/retry`, {}))}>Повторити хід AI</button>}
+        {game?.turn === 'ai' && !game.busy && !finished && <button className="primary" disabled={loading || !ready} onClick={() => void mutate(() => api<GameView>(`/game/${game.id}/retry`, {}))}>Повторити хід AI</button>}
         <button disabled={loading || game?.busy || !ready} onClick={() => {
           if (!finished && !window.confirm('Завершити поточну партію та почати нову?')) return;
           setFleet(randomFleet()); setSetup(true); setHover(null); setError('');
