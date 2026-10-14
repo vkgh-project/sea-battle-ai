@@ -74,8 +74,11 @@ describe('Gemini shot selection', () => {
     };
     expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(input.availableTargets[0]);
     expect(JSON.parse(request.contents[0].parts[0].text)).toEqual(input);
-    expect(request.generationConfig.responseFormat.text.mimeType).toBe('application/json');
-    expect(request.generationConfig.responseFormat.text.schema.required).toEqual(['row', 'column']);
+    expect(request.generationConfig.responseMimeType).toBe('application/json');
+    expect(request.generationConfig.responseSchema.required).toEqual(['row', 'column']);
+    expect(request.generationConfig).not.toHaveProperty('responseFormat');
+    expect(request.generationConfig.responseSchema.type).toBe('OBJECT');
+    expect(request.generationConfig.responseSchema.properties.row.type).toBe('INTEGER');
     expect(JSON.stringify(request)).not.toContain('playerShips');
     expect(JSON.stringify(request)).not.toContain('test-key');
   });

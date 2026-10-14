@@ -29,12 +29,13 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
           contents: [{ role: 'user', parts: [{ text: JSON.stringify(state) }] }],
           generationConfig: {
             maxOutputTokens: 4096,
-            responseFormat: { text: { mimeType: 'application/json', schema: {
-              type: 'object', additionalProperties: false, required: ['row', 'column'], properties: {
-                row: { type: 'integer', minimum: 0, maximum: 9 },
-                column: { type: 'integer', minimum: 0, maximum: 9 },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT', required: ['row', 'column'], properties: {
+                row: { type: 'INTEGER', minimum: 0, maximum: 9 },
+                column: { type: 'INTEGER', minimum: 0, maximum: 9 },
               },
-            } } },
+            },
           },
         }),
       });
