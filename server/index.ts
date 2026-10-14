@@ -5,13 +5,13 @@ function positiveEnv(name: string, fallback: number) {
   if (!Number.isInteger(value) || value < 1) throw new Error(`${name} має бути додатним цілим числом.`);
   return value;
 }
-const mode = process.env.AI_MODE ?? 'openai';
-if (mode !== 'openai' && mode !== 'demo') throw new Error('AI_MODE має бути openai або demo.');
+const mode = process.env.AI_MODE ?? 'manual';
+if (mode !== 'manual' && mode !== 'openai' && mode !== 'demo') throw new Error('AI_MODE має бути manual, openai або demo.');
 const production = process.env.NODE_ENV === 'production';
 const origin = process.env.APP_ORIGIN?.replace(/\/$/, '');
 if (production && !origin) throw new Error('У production потрібно вказати APP_ORIGIN.');
 const app = await buildApp({
-  choose: createChooser(mode, process.env.OPENAI_MODEL ?? 'gpt-4o-mini', process.env.OPENAI_API_KEY),
+  choose: mode === 'manual' ? undefined : createChooser(mode, process.env.OPENAI_MODEL ?? 'gpt-4o-mini', process.env.OPENAI_API_KEY),
   mode, production, origin, logger: true,
   maxSessions: positiveEnv('MAX_SESSIONS', 1000),
   maxAiConcurrency: positiveEnv('MAX_AI_CONCURRENCY', 8),

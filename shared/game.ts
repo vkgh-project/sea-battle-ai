@@ -4,6 +4,7 @@ export const LETTERS = 'АБВГҐДЕЄЖЗ';
 export type Point = { row: number; column: number };
 export type Ship = Point[];
 export type Shot = Point & { result: 'miss' | 'hit' | 'sunk' };
+export type AiMode = 'manual' | 'openai' | 'demo';
 export type GameView = {
   id: string;
   version: number;
@@ -16,8 +17,9 @@ export type GameView = {
   aiShots: Shot[];
   enemySunkShips: Ship[];
   enemyShips?: Ship[];
+  manualPrompt?: string;
 };
-export type SessionView = { game: GameView | null; aiMode: 'openai' | 'demo' };
+export type SessionView = { game: GameView | null; aiMode: AiMode };
 export const key = (p: Point) => p.row * SIZE + p.column;
 export const same = (a: Point, b: Point) => a.row === b.row && a.column === b.column;
 export const inside = (p: Point) => Number.isInteger(p.row) && Number.isInteger(p.column)

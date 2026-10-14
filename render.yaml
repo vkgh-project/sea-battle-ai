@@ -12,11 +12,9 @@ services:
         value: production
       - key: NODE_VERSION
         value: 24.21.0
-      - key: OPENAI_API_KEY
-        sync: false
       - key: APP_ORIGIN
         sync: false
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: AI_MODE
-        value: openai
+        value: manual

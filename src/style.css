@@ -40,6 +40,16 @@ button:disabled { cursor: default; opacity: .5; }
 .error { background: #fff0ec; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #8f473e; margin: 12px 0; }
 .error button { margin-left: 12px; }
 .demo { color: #8e682a; font-size: 12px; }
+.manual-panel { background: white; border: 1px solid #dfe6ec; border-radius: 12px; padding: 20px; margin-top: 20px; }
+.manual-panel > p { font-size: 13px; line-height: 1.6; color: #6d7f90; }
+.manual-panel label { display: block; font-size: 12px; font-weight: 700; margin: 14px 0 8px; }
+.manual-panel textarea { display: block; width: 100%; resize: vertical; border: 1px solid #d5dfe7; border-radius: 8px; padding: 12px; background: #f8fafb; color: #213449; font: 12px/1.6 ui-monospace, Consolas, monospace; }
+.manual-panel textarea:focus-visible { outline: 3px solid #168bce; outline-offset: 2px; }
+.manual-panel form > button { margin-top: 12px; }
+.prompt-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+.prompt-actions a { font-size: 12px; color: #237c75; }
+.copy-status { min-height: 20px; margin: 8px 0 0; }
+.last-shot { color: #237c75; font-size: 13px; }
 details { border-top: 1px solid #dce4eb; padding-top: 16px; font-size: 13px; }
 summary { cursor: pointer; font-weight: 600; }
 details p { color: #6d7f90; line-height: 1.8; max-width: 700px; }

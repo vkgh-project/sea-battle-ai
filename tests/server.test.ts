@@ -6,7 +6,7 @@ import type { ChooseShot } from '../server/ai.js';
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 async function fixture(choose: ChooseShot = async state => state.availableTargets[0], extra: Parameters<typeof buildApp>[0] extends infer T ? Partial<T> : never = {}) {
-  const app = await buildApp({ choose, ...extra });
+  const app = await buildApp({ choose, mode: 'openai', ...extra });
   apps.push(app);
   const session = await app.inject({ method: 'GET', url: '/api/session' });
   const token = session.cookies[0].value;

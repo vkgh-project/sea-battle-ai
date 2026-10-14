@@ -5,21 +5,26 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import staticFiles from '@fastify/static';
-import { randomFleet, type Ship } from '../shared/game.js';
+import { randomFleet, type AiMode, type Ship } from '../shared/game.js';
 import { AiRunner, type ChooseShot } from './ai.js';
 import { createGame, fire, GameError, view, type Game } from './engine.js';
+import { manualPrompt, parseManualResponse } from './manual.js';
 type Session = { expiresAt: number; game: Game | null; lastCreation: number };
 export type AppOptions = {
-  choose: ChooseShot; mode?: 'openai' | 'demo'; production?: boolean; origin?: string;
+  choose?: ChooseShot; mode?: AiMode; production?: boolean; origin?: string;
   maxSessions?: number; ttlMs?: number; maxAiConcurrency?: number; logger?: boolean;
 };
-export async function buildApp(options: AppOptions) {
+export async function buildApp(options: AppOptions = {}) {
   const sessions = new Map<string, Session>();
   const ttl = options.ttlMs ?? 3_600_000;
   const maxSessions = options.maxSessions ?? 1000;
+  const mode = options.mode ?? 'manual';
   const app = Fastify({ bodyLimit: 16_384, logger: options.logger ? { redact: ['req.headers.cookie', 'req.headers.authorization'] } : false });
-  const runner = new AiRunner(options.choose, options.maxAiConcurrency ?? 8,
+  const runner = new AiRunner(options.choose ?? (async () => { throw new Error('AI chooser is not configured'); }), options.maxAiConcurrency ?? 8,
     diagnostic => app.log.warn({ event: 'ai_turn_failed', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', ...diagnostic }, 'AI turn failed'));
+  const publicView = (game: Game) => ({ ...view(game),
+    ...(mode === 'manual' && game.phase === 'playing' && game.turn === 'ai' ? { manualPrompt: manualPrompt(game) } : {}),
+  });
   await app.register(cookie);
   const cookieName = options.production ? '__Host-seabattle' : 'seabattle';
   await app.register(rateLimit, {
@@ -62,7 +67,7 @@ export async function buildApp(options: AppOptions) {
     }
     session.expiresAt = Date.now() + ttl;
     reply.setCookie(cookieName, token!, cookieOptions);
-    return { game: session.game ? view(session.game) : null, aiMode: options.mode ?? 'openai' };
+    return { game: session.game ? publicView(session.game) : null, aiMode: mode };
   });
   function sessionFor(token?: string) {
     const session = token ? sessions.get(token) : undefined;
@@ -86,12 +91,12 @@ export async function buildApp(options: AppOptions) {
     session.game = createGame(req.body.ships, randomFleet());
     session.lastCreation = Date.now();
     reply.setCookie(cookieName, req.cookies[cookieName]!, cookieOptions);
-    return view(session.game);
+    return publicView(session.game);
   });
   app.get<{ Params: { id: string } }>('/api/game/:id', async (req, reply) => {
     const game = ownedGame(req.cookies[cookieName], req.params.id);
     reply.setCookie(cookieName, req.cookies[cookieName]!, cookieOptions);
-    return view(game);
+    return publicView(game);
   });
   app.post<{ Params: { id: string }; Body: { row: number; column: number; version: number } }>('/api/game/:id/shot', {
     schema: { body: { ...coordinate, required: ['row', 'column', 'version'], properties: {
@@ -101,14 +106,29 @@ export async function buildApp(options: AppOptions) {
     const game = ownedGame(req.cookies[cookieName], req.params.id);
     if (game.busy || game.version !== req.body.version) throw new GameError('Стан гри змінився. Оновлюємо поле.', 409);
     fire(game, 'human', { row: req.body.row, column: req.body.column });
-    runner.start(game, point => fire(game, 'ai', point));
-    return view(game);
+    if (mode !== 'manual') runner.start(game, point => fire(game, 'ai', point));
+    return publicView(game);
+  });
+  app.post<{ Params: { id: string }; Body: { response: string; version: number } }>('/api/game/:id/ai-response', {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['response', 'version'], properties: {
+      response: { type: 'string', minLength: 1, maxLength: 8000 }, version: { type: 'integer', minimum: 0 },
+    } } },
+  }, async req => {
+    const game = ownedGame(req.cookies[cookieName], req.params.id);
+    if (mode !== 'manual') throw new GameError('Введення відповіді доступне лише в ручному режимі.', 409);
+    if (game.busy || game.turn !== 'ai' || game.phase !== 'playing' || game.version !== req.body.version) {
+      throw new GameError('Цей хід уже завершено або стан гри змінився.', 409);
+    }
+    const point = parseManualResponse(req.body.response, game);
+    fire(game, 'ai', point);
+    return publicView(game);
   });
   app.post<{ Params: { id: string } }>('/api/game/:id/retry', async req => {
     const game = ownedGame(req.cookies[cookieName], req.params.id);
+    if (mode === 'manual') throw new GameError('Скопіюйте промпт і вставте відповідь ChatGPT.', 409);
     if (game.busy || game.turn !== 'ai' || game.phase !== 'playing') throw new GameError('Повтор зараз недоступний.', 409);
     runner.start(game, point => fire(game, 'ai', point));
-    return view(game);
+    return publicView(game);
   });
   app.setErrorHandler((error, _req, reply) => {
     const reported = typeof error === 'object' && error !== null && 'statusCode' in error ? error.statusCode : undefined;
