@@ -1,3 +1,4 @@
+import { BATTLESHIP_INSTRUCTIONS } from './ai-prompt.js';
 import { same, type AiMode, type Point } from '../shared/game.js';
 import { knowledge, type Game } from './engine.js';
 import { AiResponseError, GeminiRequestError, diagnoseAiError, type AiDiagnostic } from './ai-errors.js';
@@ -27,7 +28,7 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
         method: 'POST', signal: AbortSignal.timeout(25_000),
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: 'You play classic Battleship. Board is 10x10, coordinates are zero-based. Ships are straight, horizontal or vertical, and cannot touch even diagonally. Fleet: 4,3,3,2,2,2,1,1,1,1. You shoot again after a hit or sinking. You only know your previous shots and sunk ships. Choose exactly one coordinate from availableTargets. Pursue unfinished hits and otherwise search strategically. Return JSON with a single target field, formatted as "row,column", for example {"target":"0,0"}. Select only a target allowed by the response schema.' }] },
+          systemInstruction: { parts: [{ text: BATTLESHIP_INSTRUCTIONS }] },
           contents: [{ role: 'user', parts: [{ text: JSON.stringify(state) }] }],
           generationConfig: {
             maxOutputTokens: 4096,
