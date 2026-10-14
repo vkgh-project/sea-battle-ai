@@ -13,15 +13,30 @@ const messages = {
   unknown: 'Не вдалося отримати хід AI. Натисніть «Повторити хід AI».',
 } as const;
 export type AiCategory = keyof typeof messages;
-export type AiDiagnostic = { category: AiCategory; status?: number; code?: string };
+export type AiDiagnostic = { category: AiCategory; status?: number; code?: string; providerMessage?: string };
 export class AiResponseError extends Error {
   constructor(public category: AiCategory) { super(category); }
+}
+// Only this error carries provider text into diagnostics, after redaction at the API boundary.
+export class GeminiRequestError extends Error {
+  public providerMessage?: string;
+  constructor(public status: number, public code: unknown, message: unknown, apiKey: string) {
+    super('Gemini request failed');
+    if (typeof message === 'string') {
+      let safe = apiKey ? message.split(apiKey).join('[REDACTED]') : message;
+      safe = safe.replace(/AIza[A-Za-z0-9_-]+/g, '[REDACTED]')
+        .replace(/Bearer\s+[^\s"']+/gi, 'Bearer [REDACTED]')
+        .replace(/([?&](?:key|api_key|access_token)=)[^\s&"']+/gi, '$1[REDACTED]')
+        .replace(/[\u0000-\u001f\u007f]/g, ' ');
+      this.providerMessage = safe.slice(0, 1000);
+    }
+  }
 }
 const knownCodes = new Set(['API_KEY_INVALID', 'UNAUTHENTICATED', 'PERMISSION_DENIED', 'NOT_FOUND', 'RESOURCE_EXHAUSTED', 'INVALID_ARGUMENT', 'FAILED_PRECONDITION', 'DEADLINE_EXCEEDED', 'UNAVAILABLE', 'INTERNAL']);
 export function diagnoseAiError(error: unknown): AiDiagnostic & { message: string } {
   const item = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
   const status = typeof item.status === 'number' && Number.isInteger(item.status) && item.status >= 400 && item.status <= 599 ? item.status : undefined;
-  // Never log raw provider messages, response bodies, headers, or arbitrary codes.
+  // Never log response bodies, headers, arbitrary codes, or text from unknown errors.
   const code = typeof item.code === 'string' && knownCodes.has(item.code) ? item.code : undefined;
   let category: AiCategory = 'unknown';
   if (error instanceof AiResponseError) category = error.category;
@@ -33,5 +48,5 @@ export function diagnoseAiError(error: unknown): AiDiagnostic & { message: strin
   else if (error instanceof TypeError) category = 'connection';
   else if ((status && status >= 500) || code === 'UNAVAILABLE' || code === 'INTERNAL') category = 'unavailable';
   else if (status === 400 || status === 422 || code === 'INVALID_ARGUMENT') category = 'request';
-  return { category, status, code, message: messages[category] };
+  return { category, status, code, ...(error instanceof GeminiRequestError && error.providerMessage ? { providerMessage: error.providerMessage } : {}), message: messages[category] };
 }

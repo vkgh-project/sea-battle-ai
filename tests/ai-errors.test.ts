@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createChooser, AiRunner } from '../server/ai.js';
-import { AiResponseError, diagnoseAiError } from '../server/ai-errors.js';
+import { AiResponseError, GeminiRequestError, diagnoseAiError } from '../server/ai-errors.js';
 import { createGame, fire, knowledge } from '../server/engine.js';
 import { randomFleet } from '../shared/game.js';
 const model = 'gemini-3.5-flash-lite';
@@ -44,10 +44,37 @@ describe('Gemini failure diagnostics', () => {
     expect(game.busy).toBe(false);
     expect(game.turn).toBe('ai');
     expect(game.error).toContain('квоти Gemini');
-    expect(diagnostics).toEqual([{ category: 'rate_limit', status: 429, code: 'RESOURCE_EXHAUSTED' }]);
-    expect(JSON.stringify(diagnostics)).not.toContain('Sensitive provider message');
+    expect(diagnostics).toEqual([{ category: 'rate_limit', status: 429, code: 'RESOURCE_EXHAUSTED', providerMessage: 'Sensitive provider message' }]);
+    expect(JSON.stringify(diagnostics)).not.toContain('test-key');
     expect(game.aiShots).toEqual([]);
     expect(calls).toBe(1);
+  });
+  it('reports the concrete provider rejection while redacting credentials', async () => {
+    const apiKey = 'AIzaPrivateTestKey123456';
+    const transport: typeof fetch = async () => response({ error: {
+      status: 'INVALID_ARGUMENT', message: `Unknown name "responseSchema" in generation_config. Key: ${apiKey}`,
+    } }, 400);
+    const game = createGame(randomFleet(), randomFleet());
+    game.turn = 'ai';
+    const diagnostics: unknown[] = [];
+    new AiRunner(createChooser('gemini', model, apiKey, transport), 1, info => diagnostics.push(info)).start(game, point => fire(game, 'ai', point));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(diagnostics).toEqual([{ category: 'request', status: 400, code: 'INVALID_ARGUMENT',
+      providerMessage: 'Unknown name "responseSchema" in generation_config. Key: [REDACTED]' }]);
+    expect(JSON.stringify(diagnostics)).not.toContain(apiKey);
+    expect(game.error).not.toContain('Unknown name');
+    expect(game.error).not.toContain(apiKey);
+    expect(game.aiShots).toEqual([]);
+  });
+  it('redacts keys, bearer tokens and URL credentials before bounding provider text', () => {
+    const message = 'AIzaOtherSecret Bearer bearer-secret https://example.test?key=url-secret&access_token=token-secret\n' + 'x'.repeat(1500);
+    const diagnostic = diagnoseAiError(new GeminiRequestError(400, 'INVALID_ARGUMENT', message, 'configured-secret'));
+    expect(diagnostic.providerMessage).not.toContain('OtherSecret');
+    expect(diagnostic.providerMessage).not.toContain('bearer-secret');
+    expect(diagnostic.providerMessage).not.toContain('url-secret');
+    expect(diagnostic.providerMessage).not.toContain('token-secret');
+    expect(diagnostic.providerMessage).not.toContain('\n');
+    expect(diagnostic.providerMessage!.length).toBeLessThanOrEqual(1000);
   });
   it('recognizes Google invalid-key details', async () => {
     const transport: typeof fetch = async () => response({ error: { status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } }, 400);

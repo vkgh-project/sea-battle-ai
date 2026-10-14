@@ -1,9 +1,9 @@
 import { same, type AiMode, type Point } from '../shared/game.js';
 import { knowledge, type Game } from './engine.js';
-import { AiResponseError, diagnoseAiError, type AiDiagnostic } from './ai-errors.js';
+import { AiResponseError, GeminiRequestError, diagnoseAiError, type AiDiagnostic } from './ai-errors.js';
 export type ChooseShot = (state: ReturnType<typeof knowledge>) => Promise<Point>;
 type GeminiResponse = {
-  error?: { status?: string; details?: { reason?: string }[] };
+  error?: { message?: string; status?: string; details?: { reason?: string }[] };
   promptFeedback?: { blockReason?: string };
   candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[];
 };
@@ -50,7 +50,7 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
     }
     if (!response.ok || data?.error) {
       const reason = data?.error?.details?.find(detail => detail.reason === 'API_KEY_INVALID')?.reason;
-      throw Object.assign(new Error('Gemini request failed'), { status: response.status, code: reason ?? data?.error?.status });
+      throw new GeminiRequestError(response.status, reason ?? data?.error?.status, data?.error?.message, apiKey.trim());
     }
     if (data?.promptFeedback?.blockReason) throw new AiResponseError('refusal');
     const candidate = data?.candidates?.[0];
