@@ -34,7 +34,7 @@ describe('sessions and HTTP API', () => {
       calls++;
       const knowledge = JSON.parse(JSON.parse(init!.body as string).contents[0].parts[0].text);
       const miss = knowledge.availableTargets.find((p: { row: number; column: number }) => !fleet.flat().some(q => same(p, q)));
-      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(miss) }] } }] }));
+      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ target: `${miss.row},${miss.column}` }) }] } }] }));
     };
     const f = await fixture(createChooser('gemini', 'gemini-3.5-flash-lite', 'test-key', transport));
     fleet = f.game.playerShips;

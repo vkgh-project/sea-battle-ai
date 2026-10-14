@@ -13,9 +13,10 @@ const messages = {
   unknown: 'Не вдалося отримати хід AI. Натисніть «Повторити хід AI».',
 } as const;
 export type AiCategory = keyof typeof messages;
-export type AiDiagnostic = { category: AiCategory; status?: number; code?: string; providerMessage?: string };
+export type AiDiagnostic = { category: AiCategory; status?: number; code?: string; providerMessage?: string; reason?: AiResponseReason };
+export type AiResponseReason = 'http_not_json' | 'missing_candidate' | 'missing_finish_reason' | 'empty_text' | 'invalid_json' | 'invalid_shape' | 'unavailable_target' | 'no_available_targets';
 export class AiResponseError extends Error {
-  constructor(public category: AiCategory) { super(category); }
+  constructor(public category: AiCategory, public reason?: AiResponseReason) { super(category); }
 }
 // Only this error carries provider text into diagnostics, after redaction at the API boundary.
 export class GeminiRequestError extends Error {
@@ -48,5 +49,5 @@ export function diagnoseAiError(error: unknown): AiDiagnostic & { message: strin
   else if (error instanceof TypeError) category = 'connection';
   else if ((status && status >= 500) || code === 'UNAVAILABLE' || code === 'INTERNAL') category = 'unavailable';
   else if (status === 400 || status === 422 || code === 'INVALID_ARGUMENT') category = 'request';
-  return { category, status, code, ...(error instanceof GeminiRequestError && error.providerMessage ? { providerMessage: error.providerMessage } : {}), message: messages[category] };
+  return { category, status, code, ...(error instanceof AiResponseError && error.reason ? { reason: error.reason } : {}), ...(error instanceof GeminiRequestError && error.providerMessage ? { providerMessage: error.providerMessage } : {}), message: messages[category] };
 }

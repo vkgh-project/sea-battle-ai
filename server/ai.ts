@@ -18,6 +18,8 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
   if (!/^[a-zA-Z0-9._-]+$/.test(model.trim())) throw new Error('GEMINI_MODEL має містити назву моделі Gemini.');
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent`;
   return async state => {
+    const targets = new Map(state.availableTargets.map(point => [`${point.row},${point.column}`, point]));
+    if (!targets.size) throw new AiResponseError('invalid_response', 'no_available_targets');
     let response: Response;
     let data: GeminiResponse;
     try {
@@ -25,15 +27,14 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
         method: 'POST', signal: AbortSignal.timeout(25_000),
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: 'You play classic Battleship. Board is 10x10, coordinates are zero-based. Ships are straight, horizontal or vertical, and cannot touch even diagonally. Fleet: 4,3,3,2,2,2,1,1,1,1. You shoot again after a hit or sinking. You only know your previous shots and sunk ships. Choose exactly one coordinate from availableTargets. Pursue unfinished hits and otherwise search strategically. Return only the required JSON coordinate.' }] },
+          systemInstruction: { parts: [{ text: 'You play classic Battleship. Board is 10x10, coordinates are zero-based. Ships are straight, horizontal or vertical, and cannot touch even diagonally. Fleet: 4,3,3,2,2,2,1,1,1,1. You shoot again after a hit or sinking. You only know your previous shots and sunk ships. Choose exactly one coordinate from availableTargets. Pursue unfinished hits and otherwise search strategically. Return JSON with a single target field, formatted as "row,column", for example {"target":"0,0"}. Select only a target allowed by the response schema.' }] },
           contents: [{ role: 'user', parts: [{ text: JSON.stringify(state) }] }],
           generationConfig: {
             maxOutputTokens: 4096,
             responseMimeType: 'application/json',
             responseSchema: {
-              type: 'OBJECT', required: ['row', 'column'], properties: {
-                row: { type: 'INTEGER', minimum: 0, maximum: 9 },
-                column: { type: 'INTEGER', minimum: 0, maximum: 9 },
+              type: 'OBJECT', required: ['target'], properties: {
+                target: { type: 'STRING', format: 'enum', enum: [...targets.keys()] },
               },
             },
           },
@@ -42,7 +43,7 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
       try { data = await response.json() as GeminiResponse; }
       catch {
         if (!response.ok) throw Object.assign(new Error('Gemini request failed'), { status: response.status });
-        throw new AiResponseError('invalid_response');
+        throw new AiResponseError('invalid_response', 'http_not_json');
       }
     } catch (error) {
       if (error instanceof TypeError) throw new AiResponseError('connection');
@@ -56,13 +57,21 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
     const candidate = data?.candidates?.[0];
     if (candidate?.finishReason === 'MAX_TOKENS') throw new AiResponseError('incomplete');
     if (candidate?.finishReason && candidate.finishReason !== 'STOP') throw new AiResponseError('refusal');
-    if (!candidate || candidate.finishReason !== 'STOP') throw new AiResponseError('invalid_response');
-    const text = candidate.content?.parts?.filter(part => !part.thought).map(part => part.text ?? '').join('') ?? '';
-    let point: Point;
-    try { point = JSON.parse(text) as Point; }
-    catch { throw new AiResponseError('invalid_response'); }
-    if (!point || typeof point !== 'object' || Object.keys(point).sort().join() !== 'column,row'
-      || !state.availableTargets.some(p => same(p, point))) throw new AiResponseError('invalid_response');
+    if (!candidate) throw new AiResponseError('invalid_response', 'missing_candidate');
+    if (candidate.finishReason !== 'STOP') throw new AiResponseError('invalid_response', 'missing_finish_reason');
+    const text = candidate.content?.parts?.filter(part => !part.thought).map(part => part.text ?? '').join('')?.trim() ?? '';
+    if (!text) throw new AiResponseError('invalid_response', 'empty_text');
+    // Some models wrap otherwise valid JSON in Markdown even when JSON output is requested.
+    const json = text.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1');
+    let answer: unknown;
+    try { answer = JSON.parse(json); }
+    catch { throw new AiResponseError('invalid_response', 'invalid_json'); }
+    if (!answer || typeof answer !== 'object' || Array.isArray(answer)
+      || !('target' in answer) || typeof answer.target !== 'string') {
+      throw new AiResponseError('invalid_response', 'invalid_shape');
+    }
+    const point = targets.get(answer.target);
+    if (!point) throw new AiResponseError('invalid_response', 'unavailable_target');
     return { row: point.row, column: point.column };
   };
 }
