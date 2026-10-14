@@ -16,11 +16,25 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 type BoardProps = {
-  title: string; ships: Ship[]; shots?: Shot[]; sunk?: Ship[];
+  title: string; gameId?: string; ships: Ship[]; shots?: Shot[]; sunk?: Ship[];
   disabled?: boolean; onCell?: (p: Point) => void; preview?: Ship; previewValid?: boolean;
   onHover?: (p: Point | null) => void;
 };
-function Board({ title, ships, shots = [], sunk = [], disabled = false, onCell, preview = [], previewValid, onHover }: BoardProps) {
+function Board({ title, gameId, ships, shots = [], sunk = [], disabled = false, onCell, preview = [], previewValid, onHover }: BoardProps) {
+  const previous = useRef({ gameId, shots: new Set(shots.map(key)) });
+  const [splashes, setSplashes] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    const last = previous.current;
+    previous.current = { gameId, shots: new Set(shots.map(key)) };
+    if (last.gameId !== gameId || shots.length === 0) {
+      setSplashes(current => current.size ? new Set() : current);
+      return;
+    }
+    const misses = shots.filter(shot => shot.result === 'miss' && !last.shots.has(key(shot)));
+    if (misses.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setSplashes(current => new Set([...current, ...misses.map(key)]));
+    }
+  }, [gameId, shots]);
   const shipCells = new Set(ships.flat().map(key));
   const sunkCells = new Set(sunk.flat().map(key));
   return <section className="board-section">
@@ -44,6 +58,10 @@ function Board({ title, ships, shots = [], sunk = [], disabled = false, onCell, 
             disabled={disabled || !onCell || (!!shot || blocked) && title === 'Поле суперника'}
             onClick={() => onCell?.(p)} onMouseEnter={() => onHover?.(p)} onFocus={() => onHover?.(p)}>
             {shot || sunkCell ? shot?.result === 'miss' ? '·' : '×' : blocked && !filled ? '·' : ''}
+            {splashes.has(key(p)) && <span className="miss-splash" aria-hidden="true" onAnimationEnd={event => {
+              if (event.animationName !== 'miss-splash-life') return;
+              setSplashes(current => { const next = new Set(current); next.delete(key(p)); return next; });
+            }}><span className="miss-ripple" /><span className="miss-droplets" /></span>}
           </button>;
         })}
       </div>)}
@@ -130,7 +148,7 @@ function App() {
       Останній постріл {mode === 'demo' ? 'бота' : 'Gemini'}: {label(game.aiShots[game.aiShots.length - 1])} — {{ miss: 'мимо', hit: 'влучання', sunk: 'потоплено' }[game.aiShots[game.aiShots.length - 1].result]}.
     </p> : null}
     <div className="boards">
-      <Board title="Ваш флот" ships={setup ? fleet : game?.playerShips ?? []} shots={setup ? [] : game?.aiShots}
+      <Board title="Ваш флот" gameId={game?.id} ships={setup ? fleet : game?.playerShips ?? []} shots={setup ? [] : game?.aiShots}
         sunk={setup ? [] : (game?.playerShips ?? []).filter(ship => ship.every(p => game?.aiShots.some(s => same(s, p))))}
         disabled={!setup || !ready || loading} preview={setup ? preview : []} previewValid={canPlace(preview, fleet)}
         onHover={setup ? setHover : undefined} onCell={setup ? p => {
@@ -141,7 +159,7 @@ function App() {
           if (canPlace(ship, fleet)) { setFleet([...fleet, ship]); setError(''); }
           else setError('Корабель має бути в межах поля та не торкатися інших кораблів.');
         } : undefined} />
-      <Board title="Поле суперника" ships={game && !setup ? game.enemyShips ?? game.enemySunkShips : []}
+      <Board title="Поле суперника" gameId={game?.id} ships={game && !setup ? game.enemyShips ?? game.enemySunkShips : []}
         shots={setup ? [] : game?.playerShots} sunk={setup ? [] : game?.enemySunkShips}
         disabled={setup || !ready || loading || game?.turn !== 'human' || !!finished}
         onCell={game ? p => void mutate(() => api<GameView>(`/game/${game.id}/shot`, { ...p, version: game.version })) : undefined} />
