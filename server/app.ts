@@ -17,8 +17,9 @@ export async function buildApp(options: AppOptions) {
   const sessions = new Map<string, Session>();
   const ttl = options.ttlMs ?? 3_600_000;
   const maxSessions = options.maxSessions ?? 1000;
-  const runner = new AiRunner(options.choose, options.maxAiConcurrency ?? 8);
   const app = Fastify({ bodyLimit: 16_384, logger: options.logger ? { redact: ['req.headers.cookie', 'req.headers.authorization'] } : false });
+  const runner = new AiRunner(options.choose, options.maxAiConcurrency ?? 8,
+    diagnostic => app.log.warn({ event: 'ai_turn_failed', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', ...diagnostic }, 'AI turn failed'));
   await app.register(cookie);
   const cookieName = options.production ? '__Host-seabattle' : 'seabattle';
   await app.register(rateLimit, {
