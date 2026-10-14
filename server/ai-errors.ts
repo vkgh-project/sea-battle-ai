@@ -14,7 +14,7 @@ const messages = {
 } as const;
 export type AiCategory = keyof typeof messages;
 export type AiDiagnostic = { category: AiCategory; status?: number; code?: string; providerMessage?: string; reason?: AiResponseReason };
-export type AiResponseReason = 'http_not_json' | 'missing_candidate' | 'missing_finish_reason' | 'empty_text' | 'invalid_json' | 'invalid_shape' | 'unavailable_target' | 'no_available_targets';
+export type AiResponseReason = 'http_not_json' | 'missing_candidate' | 'missing_finish_reason' | 'empty_text' | 'invalid_json' | 'invalid_shape' | 'unavailable_target' | 'no_available_targets' | 'no_tactical_targets';
 export class AiResponseError extends Error {
   constructor(public category: AiCategory, public reason?: AiResponseReason) { super(category); }
 }

@@ -6,7 +6,7 @@ RULES AND STATE
 - The original fleet lengths are 4,3,3,2,2,2,1,1,1,1. remainingShips lists the lengths of ships not yet sunk, including ships already damaged. Account for duplicate lengths separately.
 - shots contains your complete shot history. A hit means a ship cell; miss means water; sunk marks the shot that finished a ship.
 - sunkShips contains ALL cells of each completed ship. Earlier hits belonging to sunkShips are resolved hits, not damaged ships to pursue.
-- availableTargets and the response enum list unshot, legal cells. Legal does not mean strategically plausible: many legal cells can still be deduced to be water.
+- availableTargets lists all legal unshot cells. recommendedTargets and the response enum contain only the strongest tactical candidates calculated from your public evidence. In tacticalMode pursuit, these candidates continue unfinished ships; in search, they maximize a remaining-ship placement-density estimate. Choose only from recommendedTargets. Their order is randomized and has no tactical meaning.
 - You have no hidden fleet information. Reconstruct the tactical situation from the supplied state on EVERY call.
 
 PRIORITY 1: FINISH DAMAGED SHIPS

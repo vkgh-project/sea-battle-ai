@@ -1,3 +1,4 @@
+import { planTargets, shuffledTargets } from './ai-strategy.js';
 import { BATTLESHIP_INSTRUCTIONS } from './ai-prompt.js';
 import { same, type AiMode, type Point } from '../shared/game.js';
 import { knowledge, type Game } from './engine.js';
@@ -19,8 +20,11 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
   if (!/^[a-zA-Z0-9._-]+$/.test(model.trim())) throw new Error('GEMINI_MODEL має містити назву моделі Gemini.');
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent`;
   return async state => {
-    const targets = new Map(state.availableTargets.map(point => [`${point.row},${point.column}`, point]));
-    if (!targets.size) throw new AiResponseError('invalid_response', 'no_available_targets');
+    const plan = planTargets(state);
+    const targets = new Map(shuffledTargets(plan.targets).map(point => [`${point.row},${point.column}`, point]));
+    if (!targets.size) throw new AiResponseError('invalid_response', state.availableTargets.length ? 'no_tactical_targets' : 'no_available_targets');
+    // Forced moves need no model call and consume no Gemini quota.
+    if (targets.size === 1) return { ...targets.values().next().value! };
     let response: Response;
     let data: GeminiResponse;
     try {
@@ -29,7 +33,7 @@ export function createChooser(mode: AiMode, model: string, apiKey?: string, tran
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: BATTLESHIP_INSTRUCTIONS }] },
-          contents: [{ role: 'user', parts: [{ text: JSON.stringify(state) }] }],
+          contents: [{ role: 'user', parts: [{ text: JSON.stringify({ ...state, tacticalMode: plan.mode, recommendedTargets: [...targets.values()] }) }] }],
           generationConfig: {
             maxOutputTokens: 4096,
             responseMimeType: 'application/json',

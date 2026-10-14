@@ -1,3 +1,4 @@
+import { planTargets } from '../server/ai-strategy.js';
 import { describe, expect, it } from 'vitest';
 import { createChooser, AiRunner } from '../server/ai.js';
 import { AiResponseError, GeminiRequestError, diagnoseAiError } from '../server/ai-errors.js';
@@ -98,16 +99,19 @@ describe('Gemini shot selection', () => {
       expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('test-key');
       expect(init?.signal).toBeDefined();
       request = JSON.parse(init!.body as string);
-      return response(success(target(input.availableTargets[0])));
+      return response(success(target(planTargets(input).targets[0])));
     };
-    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(input.availableTargets[0]);
-    expect(JSON.parse(request.contents[0].parts[0].text)).toEqual(input);
+    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(planTargets(input).targets[0]);
+    const { tacticalMode, recommendedTargets, ...sentState } = JSON.parse(request.contents[0].parts[0].text);
+    expect(sentState).toEqual(input);
+    expect(tacticalMode).toBe('search');
+    expect(recommendedTargets).toHaveLength(planTargets(input).targets.length);
     expect(request.generationConfig.responseMimeType).toBe('application/json');
     expect(request.generationConfig.responseSchema.required).toEqual(['target']);
     expect(request.generationConfig).not.toHaveProperty('responseFormat');
     expect(request.generationConfig.responseSchema.type).toBe('OBJECT');
     expect(request.generationConfig.responseSchema.properties.target.format).toBe('enum');
-    expect(request.generationConfig.responseSchema.properties.target.enum).toEqual(input.availableTargets.map(p => `${p.row},${p.column}`));
+    expect(request.generationConfig.responseSchema.properties.target.enum.slice().sort()).toEqual(planTargets(input).targets.map(p => `${p.row},${p.column}`).sort());
     expect(JSON.stringify(request)).not.toContain('playerShips');
     expect(JSON.stringify(request)).not.toContain('test-key');
   });
@@ -133,17 +137,17 @@ describe('Gemini shot selection', () => {
   });
   it('ignores thought parts and combines text parts', async () => {
     const input = state();
-    const text = JSON.stringify(target(input.availableTargets[0]));
+    const text = JSON.stringify(target(planTargets(input).targets[0]));
     const transport: typeof fetch = async () => response({ candidates: [{ finishReason: 'STOP', content: { parts: [
       { thought: true, text: 'internal thought' }, { text: text.slice(0, 5) }, { text: text.slice(5) },
     ] } }] });
-    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(input.availableTargets[0]);
+    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(planTargets(input).targets[0]);
   });
   it('accepts fenced JSON without choosing a different cell', async () => {
     const input = state();
-    const text = '```json\n' + JSON.stringify(target(input.availableTargets[0])) + '\n```';
+    const text = '```json\n' + JSON.stringify(target(planTargets(input).targets[0])) + '\n```';
     const transport: typeof fetch = async () => response({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text }] } }] });
-    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(input.availableTargets[0]);
+    expect(await createChooser('gemini', model, 'test-key', transport)(input)).toEqual(planTargets(input).targets[0]);
   });
   it('logs a safe reason for invalid JSON without exposing response text', async () => {
     const transport: typeof fetch = async () => response({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'private-response-text' }] } }] });
