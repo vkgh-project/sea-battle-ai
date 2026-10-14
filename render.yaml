@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: sea-battle-ai
+    runtime: node
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.21.0
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: AI_MODE
+        value: openai
